@@ -23,18 +23,12 @@ import (
 	"github.com/tal-tech/go-zero/tools/goctl/plugin"
 	rpc "github.com/tal-tech/go-zero/tools/goctl/rpc/cli"
 	"github.com/tal-tech/go-zero/tools/goctl/tpl"
-	"github.com/tal-tech/go-zero/tools/goctl/upgrade"
 	"github.com/urfave/cli"
 )
 
 var (
-	BuildVersion = "1.1.3"
+	BuildVersion = "1.1.1"
 	commands     = []cli.Command{
-		{
-			Name:   "upgrade",
-			Usage:  "upgrade goctl to latest version",
-			Action: upgrade.Upgrade,
-		},
 		{
 			Name:  "api",
 			Usage: "generate api related files",

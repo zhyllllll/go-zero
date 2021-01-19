@@ -1,6 +1,7 @@
 package tsgen
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -13,6 +14,8 @@ import (
 
 const (
 	handlerTemplate = `{{.imports}}
+
+{{.types}}
 
 {{.apis}}
 `
@@ -32,6 +35,36 @@ func genHandler(dir, webApi, caller string, api *spec.ApiSpec, unwrapApi bool) e
 	}
 	defer fp.Close()
 
+	var localTypes []spec.Type
+	for _, route := range api.Service.Routes() {
+		rts := apiutil.GetLocalTypes(api, route)
+		localTypes = append(localTypes, rts...)
+	}
+
+	var prefixForType = func(ty string) string {
+		if _, pri := primitiveType(ty); pri {
+			return ""
+		}
+		for _, item := range localTypes {
+			if util.Title(item.Name) == ty {
+				return ""
+			}
+		}
+		return packagePrefix
+	}
+
+	types, err := genTypes(localTypes, func(name string) (*spec.Type, error) {
+		for _, ty := range api.Types {
+			if strings.ToLower(ty.Name) == strings.ToLower(name) {
+				return &ty, nil
+			}
+		}
+		return nil, errors.New("inline type " + name + " not exist, please correct api file")
+	}, prefixForType)
+	if err != nil {
+		return err
+	}
+
 	imports := ""
 	if len(caller) == 0 {
 		caller = "webapi"
@@ -43,52 +76,71 @@ func genHandler(dir, webApi, caller string, api *spec.ApiSpec, unwrapApi bool) e
 	if len(webApi) > 0 {
 		imports += `import ` + importCaller + ` from ` + "\"" + webApi + "\""
 	}
-
-	if len(api.Types) != 0 {
+	shardTypes := apiutil.GetSharedTypes(api)
+	if len(shardTypes) != 0 {
 		if len(imports) > 0 {
-			imports += util.NL
+			imports += "\n"
 		}
 		outputFile := apiutil.ComponentName(api)
 		imports += fmt.Sprintf(`import * as components from "%s"`, "./"+outputFile)
-		imports += fmt.Sprintf(`%sexport * from "%s"`, util.NL, "./"+outputFile)
 	}
 
-	apis, err := genApi(api, caller)
+	apis, err := genApi(api, caller, prefixForType)
 	if err != nil {
 		return err
 	}
 
 	t := template.Must(template.New("handlerTemplate").Parse(handlerTemplate))
 	return t.Execute(fp, map[string]string{
+		"webApi":  webApi,
+		"types":   strings.TrimSpace(types),
 		"imports": imports,
 		"apis":    strings.TrimSpace(apis),
 	})
 }
 
-func genApi(api *spec.ApiSpec, caller string) (string, error) {
+func genTypes(localTypes []spec.Type, inlineType func(string) (*spec.Type, error), prefixForType func(string) string) (string, error) {
+	var builder strings.Builder
+	var first bool
+
+	for _, tp := range localTypes {
+		if first {
+			first = false
+		} else {
+			fmt.Fprintln(&builder)
+		}
+		if err := writeType(&builder, tp, func(name string) (s *spec.Type, err error) {
+			return inlineType(name)
+		}, prefixForType); err != nil {
+			return "", err
+		}
+	}
+	types := builder.String()
+	return types, nil
+}
+
+func genApi(api *spec.ApiSpec, caller string, prefixForType func(string) string) (string, error) {
 	var builder strings.Builder
 	for _, group := range api.Service.Groups {
 		for _, route := range group.Routes {
-			handler := route.Handler
-			if len(handler) == 0 {
+			handler, ok := apiutil.GetAnnotationValue(route.Annotations, "server", "handler")
+			if !ok {
 				return "", fmt.Errorf("missing handler annotation for route %q", route.Path)
 			}
-
 			handler = util.Untitle(handler)
 			handler = strings.Replace(handler, "Handler", "", 1)
 			comment := commentForRoute(route)
 			if len(comment) > 0 {
 				fmt.Fprintf(&builder, "%s\n", comment)
 			}
-			fmt.Fprintf(&builder, "export function %s(%s) {\n", handler, paramsForRoute(route))
+			fmt.Fprintf(&builder, "export function %s(%s) {\n", handler, paramsForRoute(route, prefixForType))
 			writeIndent(&builder, 1)
 			responseGeneric := "<null>"
-			if len(route.ResponseTypeName()) > 0 {
-				val, err := goTypeToTs(route.ResponseType, true)
+			if len(route.ResponseType.Name) > 0 {
+				val, err := goTypeToTs(route.ResponseType.Name, prefixForType)
 				if err != nil {
 					return "", err
 				}
-
 				responseGeneric = fmt.Sprintf("<%s>", val)
 			}
 			fmt.Fprintf(&builder, `return %s.%s%s(%s)`, caller, strings.ToLower(route.Method),
@@ -101,18 +153,14 @@ func genApi(api *spec.ApiSpec, caller string) (string, error) {
 	return apis, nil
 }
 
-func paramsForRoute(route spec.Route) string {
-	if route.RequestType == nil {
-		return ""
-	}
+func paramsForRoute(route spec.Route, prefixForType func(string) string) string {
 	hasParams := pathHasParams(route)
 	hasBody := hasRequestBody(route)
-	rt, err := goTypeToTs(route.RequestType, true)
+	rt, err := goTypeToTs(route.RequestType.Name, prefixForType)
 	if err != nil {
 		fmt.Println(err.Error())
 		return ""
 	}
-
 	if hasParams && hasBody {
 		return fmt.Sprintf("params: %s, req: %s", rt+"Params", rt)
 	} else if hasParams {
@@ -125,7 +173,7 @@ func paramsForRoute(route spec.Route) string {
 
 func commentForRoute(route spec.Route) string {
 	var builder strings.Builder
-	comment := route.JoinedDoc()
+	comment, _ := apiutil.GetAnnotationValue(route.Annotations, "doc", "summary")
 	builder.WriteString("/**")
 	builder.WriteString("\n * @description " + comment)
 	hasParams := pathHasParams(route)
@@ -152,35 +200,24 @@ func callParamsForRoute(route spec.Route, group spec.Group) string {
 	} else if hasBody {
 		return fmt.Sprintf("%s, %s", pathForRoute(route, group), "req")
 	}
-
 	return pathForRoute(route, group)
 }
 
 func pathForRoute(route spec.Route, group spec.Group) string {
-	prefix := group.GetAnnotation("pathPrefix")
-	if len(prefix) == 0 {
+	value, ok := apiutil.GetAnnotationValue(group.Annotations, "server", pathPrefix)
+	if !ok {
 		return "\"" + route.Path + "\""
 	} else {
-		prefix = strings.TrimPrefix(prefix, `"`)
-		prefix = strings.TrimSuffix(prefix, `"`)
-		return fmt.Sprintf(`"%s/%s"`, prefix, strings.TrimPrefix(route.Path, "/"))
+		value = strings.TrimPrefix(value, `"`)
+		value = strings.TrimSuffix(value, `"`)
+		return fmt.Sprintf(`"%s/%s"`, value, strings.TrimPrefix(route.Path, "/"))
 	}
 }
 
 func pathHasParams(route spec.Route) bool {
-	ds, ok := route.RequestType.(spec.DefineStruct)
-	if !ok {
-		return false
-	}
-
-	return len(ds.Members) != len(ds.GetBodyMembers())
+	return len(route.RequestType.Members) != len(route.RequestType.GetBodyMembers())
 }
 
 func hasRequestBody(route spec.Route) bool {
-	ds, ok := route.RequestType.(spec.DefineStruct)
-	if !ok {
-		return false
-	}
-
-	return len(route.RequestTypeName()) > 0 && len(ds.GetBodyMembers()) > 0
+	return len(route.RequestType.Name) > 0 && len(route.RequestType.GetBodyMembers()) > 0
 }

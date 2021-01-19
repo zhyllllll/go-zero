@@ -22,7 +22,11 @@ func JavaCommand(c *cli.Context) error {
 		return errors.New("missing -dir")
 	}
 
-	api, err := parser.Parse(apiFile)
+	p, err := parser.NewParser(apiFile)
+	if err != nil {
+		return err
+	}
+	api, err := p.Parse()
 	if err != nil {
 		return err
 	}

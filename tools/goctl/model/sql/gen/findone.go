@@ -44,6 +44,5 @@ func genFindOne(table Table, withCache bool) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-
 	return output.String(), findOneMethod.String(), nil
 }

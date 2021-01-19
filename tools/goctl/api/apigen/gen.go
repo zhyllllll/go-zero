@@ -12,21 +12,18 @@ import (
 	"github.com/urfave/cli"
 )
 
-const apiTemplate = `
-syntax = "v1"
-
-info(
+const apiTemplate = `info(
 	title: // TODO: add title
 	desc: // TODO: add description
 	author: "{{.gitUser}}"
 	email: "{{.gitEmail}}"
 )
 
-type request {
+type request struct {
 	// TODO: add members here and delete this comment
 }
 
-type response {
+type response struct {
 	// TODO: add members here and delete this comment
 }
 

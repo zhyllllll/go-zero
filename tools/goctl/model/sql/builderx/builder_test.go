@@ -8,40 +8,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type mockedUser struct {
-	// 自增id
-	Id string `db:"id" json:"id,omitempty"`
-	// 姓名
-	UserName string `db:"user_name" json:"userName,omitempty"`
-	// 1男,2女
-	Sex  int    `db:"sex" json:"sex,omitempty"`
-	Uuid string `db:"uuid" uuid:"uuid,omitempty"`
-	Age  int    `db:"age" json:"age"`
-}
+type (
+	User struct {
+		// 自增id
+		Id string `db:"id" json:"id,omitempty"`
+		// 姓名
+		UserName string `db:"user_name" json:"userName,omitempty"`
+		// 1男,2女
+		Sex int `db:"sex" json:"sex,omitempty"`
 
-var (
-	userFieldsWithRawStringQuote    = RawFieldNames(mockedUser{})
-	userFieldsWithoutRawStringQuote = FieldNames(mockedUser{})
+		Uuid string `db:"uuid" uuid:"uuid,omitempty"`
+
+		Age int `db:"age" json:"age"`
+	}
 )
 
-func TestFieldNames(t *testing.T) {
-	t.Run("old", func(t *testing.T) {
-		var u mockedUser
-		out := FieldNames(&u)
-		expected := []string{"id", "user_name", "sex", "uuid", "age"}
-		assert.Equal(t, expected, out)
-	})
+var userFields = FieldNames(User{})
 
-	t.Run("new", func(t *testing.T) {
-		var u mockedUser
-		out := RawFieldNames(&u)
-		expected := []string{"`id`", "`user_name`", "`sex`", "`uuid`", "`age`"}
-		assert.Equal(t, expected, out)
-	})
+func TestFieldNames(t *testing.T) {
+	var u User
+	out := FieldNames(&u)
+	actual := []string{"`id`", "`user_name`", "`sex`", "`uuid`", "`age`"}
+	assert.Equal(t, out, actual)
 }
 
 func TestNewEq(t *testing.T) {
-	u := &mockedUser{
+	u := &User{
 		Id:       "123456",
 		UserName: "wahaha",
 	}
@@ -53,10 +45,10 @@ func TestNewEq(t *testing.T) {
 
 // @see https://github.com/go-xorm/builder
 func TestBuilderSql(t *testing.T) {
-	u := &mockedUser{
+	u := &User{
 		Id: "123123",
 	}
-	fields := RawFieldNames(u)
+	fields := FieldNames(u)
 	eq := NewEq(u)
 	sql, args, err := builder.Select(fields...).From("user").Where(eq).ToSQL()
 	fmt.Println(sql, args, err)
@@ -72,34 +64,22 @@ func TestBuildSqlDefaultValue(t *testing.T) {
 	eq["age"] = 0
 	eq["user_name"] = ""
 
-	t.Run("raw", func(t *testing.T) {
-		sql, args, err := builder.Select(userFieldsWithRawStringQuote...).From("user").Where(eq).ToSQL()
-		fmt.Println(sql, args, err)
+	sql, args, err := builder.Select(userFields...).From("user").Where(eq).ToSQL()
+	fmt.Println(sql, args, err)
 
-		actualSql := "SELECT `id`,`user_name`,`sex`,`uuid`,`age` FROM user WHERE age=? AND user_name=?"
-		actualArgs := []interface{}{0, ""}
-		assert.Equal(t, sql, actualSql)
-		assert.Equal(t, args, actualArgs)
-	})
-
-	t.Run("withour raw quote", func(t *testing.T) {
-		sql, args, err := builder.Select(userFieldsWithoutRawStringQuote...).From("user").Where(eq).ToSQL()
-		fmt.Println(sql, args, err)
-
-		actualSql := "SELECT id,user_name,sex,uuid,age FROM user WHERE age=? AND user_name=?"
-		actualArgs := []interface{}{0, ""}
-		assert.Equal(t, sql, actualSql)
-		assert.Equal(t, args, actualArgs)
-	})
+	actualSql := "SELECT `id`,`user_name`,`sex`,`uuid`,`age` FROM user WHERE age=? AND user_name=?"
+	actualArgs := []interface{}{0, ""}
+	assert.Equal(t, sql, actualSql)
+	assert.Equal(t, args, actualArgs)
 }
 
 func TestBuilderSqlIn(t *testing.T) {
-	u := &mockedUser{
+	u := &User{
 		Age: 18,
 	}
 	gtU := NewGt(u)
 	in := builder.In("id", []string{"1", "2", "3"})
-	sql, args, err := builder.Select(userFieldsWithRawStringQuote...).From("user").Where(in).And(gtU).ToSQL()
+	sql, args, err := builder.Select(userFields...).From("user").Where(in).And(gtU).ToSQL()
 	fmt.Println(sql, args, err)
 
 	actualSql := "SELECT `id`,`user_name`,`sex`,`uuid`,`age` FROM user WHERE id IN (?,?,?) AND age>?"
@@ -110,7 +90,7 @@ func TestBuilderSqlIn(t *testing.T) {
 
 func TestBuildSqlLike(t *testing.T) {
 	like := builder.Like{"name", "wang"}
-	sql, args, err := builder.Select(userFieldsWithRawStringQuote...).From("user").Where(like).ToSQL()
+	sql, args, err := builder.Select(userFields...).From("user").Where(like).ToSQL()
 	fmt.Println(sql, args, err)
 
 	actualSql := "SELECT `id`,`user_name`,`sex`,`uuid`,`age` FROM user WHERE name LIKE ?"

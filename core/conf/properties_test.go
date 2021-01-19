@@ -24,20 +24,6 @@ func TestProperties(t *testing.T) {
 	assert.Equal(t, "test", props.GetString("app.name"))
 	assert.Equal(t, "app", props.GetString("app.program"))
 	assert.Equal(t, 5, props.GetInt("app.threads"))
-
-	val := props.ToString()
-	assert.Contains(t, val, "app.name")
-	assert.Contains(t, val, "app.program")
-	assert.Contains(t, val, "app.threads")
-}
-
-func TestLoadProperties_badContent(t *testing.T) {
-	filename, err := fs.TempFilenameWithText("hello")
-	assert.Nil(t, err)
-	defer os.Remove(filename)
-	_, err = LoadProperties(filename)
-	assert.NotNil(t, err)
-	assert.True(t, len(err.Error()) > 0)
 }
 
 func TestSetString(t *testing.T) {

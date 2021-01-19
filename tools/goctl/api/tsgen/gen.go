@@ -20,12 +20,15 @@ func TsCommand(c *cli.Context) error {
 	if len(apiFile) == 0 {
 		return errors.New("missing -api")
 	}
-
 	if len(dir) == 0 {
 		return errors.New("missing -dir")
 	}
 
-	api, err := parser.Parse(apiFile)
+	p, err := parser.NewParser(apiFile)
+	if err != nil {
+		return err
+	}
+	api, err := p.Parse()
 	if err != nil {
 		fmt.Println(aurora.Red("Failed"))
 		return err

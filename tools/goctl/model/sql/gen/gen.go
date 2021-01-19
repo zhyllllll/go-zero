@@ -25,7 +25,7 @@ const (
 
 type (
 	defaultGenerator struct {
-		// source string
+		//source string
 		dir string
 		console.Console
 		pkg string
@@ -57,7 +57,6 @@ func NewDefaultGenerator(dir string, cfg *config.Config, opt ...Option) (*defaul
 	for _, fn := range optionList {
 		fn(generator)
 	}
-
 	return generator, nil
 }
 
@@ -97,7 +96,6 @@ func (g *defaultGenerator) StartFromInformationSchema(db string, columns map[str
 
 		m[table.Name.Source()] = code
 	}
-
 	return g.createFile(m)
 }
 
@@ -132,7 +130,6 @@ func (g *defaultGenerator) createFile(modelList map[string]string) error {
 			return err
 		}
 	}
-
 	// generate error file
 	varFilename, err := format.FileNamingFormat(g.cfg.NamingFormat, "vars")
 	if err != nil {
@@ -171,15 +168,16 @@ func (g *defaultGenerator) genFromDDL(source string, withCache bool) (map[string
 		}
 		m[table.Name.Source()] = code
 	}
-
 	return m, nil
 }
 
-type Table struct {
-	parser.Table
-	CacheKey          map[string]Key
-	ContainsUniqueKey bool
-}
+type (
+	Table struct {
+		parser.Table
+		CacheKey          map[string]Key
+		ContainsUniqueKey bool
+	}
+)
 
 func (g *defaultGenerator) genModel(in parser.Table, withCache bool) (string, error) {
 	if len(in.PrimaryKey.Name.Source()) == 0 {
@@ -294,6 +292,5 @@ func wrapWithRawString(v string) string {
 	} else if len(v) == 1 {
 		v = v + "`"
 	}
-
 	return v
 }

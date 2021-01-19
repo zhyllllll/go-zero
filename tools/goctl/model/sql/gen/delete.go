@@ -58,6 +58,5 @@ func genDelete(table Table, withCache bool) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-
 	return output.String(), deleteMethodOut.String(), nil
 }
